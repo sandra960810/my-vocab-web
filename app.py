@@ -1,11 +1,12 @@
 import streamlit as st
 import random
 import requests
+import time  # <--- 新增這個，用來產生不同的時間戳記
 
 # --- 設定網頁 ---
 st.set_page_config(page_title="我的專屬單字教練", page_icon="🎓", layout="wide")
 
-# --- 文法檢查 API (免安裝 Java) ---
+# --- 文法檢查 API ---
 def check_grammar_api(text):
     url = "https://api.languagetool.org/v2/check"
     data = {'text': text, 'language': 'en-US'}
@@ -77,11 +78,17 @@ if "words" not in st.session_state:
 if "current_q" not in st.session_state:
     st.session_state.current_q = random.choice(st.session_state.words)
 
+# --- 關鍵修復：加入時間戳記，確保每次點擊都會發音 ---
 def speak(text):
     clean_text = text.replace('"', '').replace("'", "")
+    # 使用當前時間作為唯一標識，強迫瀏覽器重新執行 JS
+    unique_id = int(time.time() * 1000) 
     js_code = f"""<script>
     var msg = new SpeechSynthesisUtterance('{clean_text}');
-    msg.lang = 'en-US'; msg.rate = 0.85; window.speechSynthesis.speak(msg);
+    msg.lang = 'en-US'; 
+    msg.rate = 0.85; 
+    window.speechSynthesis.speak(msg);
+    console.log("Speaking: {clean_text} ({unique_id})");
     </script>"""
     st.components.v1.html(js_code, height=0)
 
@@ -94,14 +101,18 @@ st.sidebar.caption(f"目前單字量：{len(st.session_state.words)} 個")
 # --- 模式 A: 複習 ---
 if mode == "📚 分類複習":
     st.title("📚 分類單字複習")
+    st.info("點擊喇叭可以無限次重聽發音！")
     categories = sorted(list(set([w['cat'] for w in st.session_state.words])))
     for cat in categories:
         with st.expander(f"{cat}", expanded=False):
             for w in [x for x in st.session_state.words if x['cat'] == cat]:
                 c1, c2, c3 = st.columns([2, 1, 2])
                 c1.markdown(f"### {w['en']}")
-                if c2.button("🔊", key=f"s_{w['en']}"): speak(w['en'])
-                if c3.checkbox("意思", key=f"c_{w['en']}"): st.write(f":blue[{w['zh']}]")
+                # 按鈕的 key 保持不變，但在 speak 函式內部做了處理
+                if c2.button("🔊", key=f"s_{w['en']}"): 
+                    speak(w['en'])
+                if c3.checkbox("意思", key=f"c_{w['en']}"): 
+                    st.write(f":blue[{w['zh']}]")
                 st.divider()
 
 # --- 模式 B: 拼寫 ---
@@ -142,13 +153,12 @@ elif mode == "👨‍🏫 AI 造句糾錯":
     if c3.button("換題"):
         st.session_state.current_q = random.choice(st.session_state.words); st.rerun()
 
-# --- 模式 D: 新增單字 (補回功能) ---
+# --- 模式 D: 新增單字 ---
 elif mode == "➕ 新增單字":
     st.title("➕ 新增單字到庫存")
     with st.form("add_word"):
         new_en = st.text_input("英文單字")
         new_zh = st.text_input("中文意思")
-        # 自動抓取目前的分類選項
         cats = sorted(list(set([w['cat'] for w in st.session_state.words])))
         new_cat = st.selectbox("選擇分類", cats)
         
