@@ -1,7 +1,13 @@
-# 這是根據你的要求，剔除最後一部分單字後的「精確版」單字庫
+import streamlit as st
+import random
+
+# 設定網頁標題與排版
+st.set_page_config(page_title="我的專屬單字庫", page_icon="📖", layout="centered")
+
+# --- 1. 完整單字庫 (由照片提取並校對) ---
 if "words" not in st.session_state:
     st.session_state.words = [
-        # --- 第一張照片內容 ---
+        # 第一張照片內容
         {"en": "Ambivert", "zh": "中性性格者 (50% 50%)"},
         {"en": "Rational", "zh": "理性的"},
         {"en": "Delusional", "zh": "幻想的/妄想的"},
@@ -24,8 +30,7 @@ if "words" not in st.session_state:
         {"en": "Obligation", "zh": "義務/責任"},
         {"en": "Conduct", "zh": "執行/行為"},
         {"en": "Masculine", "zh": "男性的/陽剛的"},
-        
-        # --- 第二張照片內容 ---
+        # 第二張照片內容
         {"en": "Panoramic", "zh": "全景的/全景畫"},
         {"en": "Financial commitment", "zh": "財務承諾"},
         {"en": "Enthusiast", "zh": "愛好者/熱衷者"},
@@ -52,3 +57,94 @@ if "words" not in st.session_state:
         {"en": "Urging", "zh": "催促/力勸"},
         {"en": "Ancestors", "zh": "祖先"}
     ]
+
+# --- 2. 初始化 Session 狀態 ---
+if "current_q" not in st.session_state:
+    st.session_state.current_q = random.choice(st.session_state.words)
+if "user_feedback" not in st.session_state:
+    st.session_state.user_feedback = ""
+
+# --- 3. 語音功能 (優化音質與語速) ---
+def speak(text):
+    js_code = f"""
+    <script>
+    var msg = new SpeechSynthesisUtterance("{text}");
+    msg.lang = 'en-US';
+    msg.rate = 0.85;  // 稍慢語速，聽得更清楚
+    msg.pitch = 1.0;
+    window.speechSynthesis.speak(msg);
+    </script>
+    """
+    st.components.v1.html(js_code, height=0)
+
+# --- 4. 側邊欄導覽 ---
+st.sidebar.title("🛠️ 單字學習選單")
+mode = st.sidebar.radio("請切換模式：", ["全單字庫複習", "單字拼寫練習", "造句練習模式", "自行新增單字"])
+
+st.sidebar.divider()
+st.sidebar.write(f"📊 目前共有 {len(st.session_state.words)} 個單字")
+
+# --- 模式 A：全單字庫複習 ---
+if mode == "全單字庫複習":
+    st.title("📚 全單字庫複習")
+    st.write("在練習之前，先快速瀏覽一遍你的筆記單字：")
+    
+    # 建立一個美觀的表格
+    st.table(st.session_state.words)
+    
+    if st.button("🔊 隨機聽一個單字發音"):
+        word = random.choice(st.session_state.words)
+        st.write(f"正在朗讀：**{word['en']}**")
+        speak(word['en'])
+
+# --- 模式 B：單字拼寫練習 ---
+elif mode == "單字拼寫練習":
+    st.title("✍️ 拼寫測驗")
+    q = st.session_state.current_q
+    
+    st.subheader(f"意思：:blue[{q['zh']}]")
+    
+    user_input = st.text_input("請拼出英文：", key="input_text").strip()
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("檢查"):
+            if user_input.lower() == q['en'].lower():
+                st.session_state.user_feedback = "✅ 正確！你太棒了！"
+                st.balloons()
+                speak(q['en'])
+            else:
+                st.session_state.user_feedback = f"❌ 拼錯了，正確是：**{q['en']}**"
+    
+    with col2:
+        if st.button("🔊 聽發音"):
+            speak(q['en'])
+            
+    with col3:
+        if st.button("下一題 ➡️"):
+            st.session_state.current_q = random.choice(st.session_state.words)
+            st.session_state.user_feedback = ""
+            st.rerun()
+            
+    if st.session_state.user_feedback:
+        st.markdown(st.session_state.user_feedback)
+
+# --- 模式 C：造句練習模式 ---
+elif mode == "造句練習模式":
+    st.title("💡 造句練習")
+    q = st.session_state.current_q
+    st.write(f"請嘗試用單字 **{q['en']}** ({q['zh']}) 造一個句子：")
+    
+    sentence = st.text_area("在下方輸入句子：", height=100)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔊 朗讀我的句子"):
+            if sentence:
+                speak(sentence)
+            else:
+                st.warning("請先輸入內容喔！")
+    with col2:
+        if st.button("更換單字"):
+            st.session_state.current_q = random.choice(st.session_state.words)
+            st.
