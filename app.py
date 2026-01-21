@@ -1,27 +1,30 @@
 import streamlit as st
 import random
-import language_tool_python
+import requests # 改用這個發送網路請求
 
 # --- 設定網頁 ---
 st.set_page_config(page_title="我的專屬單字教練", page_icon="🎓", layout="wide")
 
-# --- 關鍵修正：初始化文法檢查工具 (改用遠端模式，免安裝 Java) ---
-@st.cache_resource
-def get_grammar_tool():
-    # 使用公共 API 伺服器，解決 Streamlit Cloud 報錯問題
-    return language_tool_python.LanguageTool('en-US', remote_server='https://api.languagetoolplus.com/v2/')
-
-# 嘗試載入工具，若連線失敗提供友善提示
-try:
-    tool = get_grammar_tool()
-    grammar_active = True
-except Exception as e:
-    tool = None
-    grammar_active = False
-    print(f"Grammar tool error: {e}")
+# --- 關鍵修正：改用直接 API 連線 (完全不需要 Java) ---
+def check_grammar_api(text):
+    """直接呼叫 LanguageTool 官方 API，不依賴不穩定的 Python 套件"""
+    url = "https://api.languagetool.org/v2/check"
+    data = {
+        'text': text,
+        'language': 'en-US'
+    }
+    try:
+        response = requests.post(url, data=data)
+        if response.status_code == 200:
+            return response.json().get('matches', [])
+        else:
+            print(f"API Error: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"Connection Error: {e}")
+        return None
 
 # --- 1. 完整單字庫 (已分類) ---
-# 分類代號：🧠性格/心理, ⚖️法律/義務, 🥘生活/行為, 🖼️抽象/其他
 if "words" not in st.session_state:
     st.session_state.words = [
         # --- 🧠 性格與心理 ---
@@ -86,7 +89,6 @@ if "current_q" not in st.session_state:
 
 # --- 3. 語音功能 (HTML5) ---
 def speak(text):
-    # 移除引號避免 JS 錯誤
     clean_text = text.replace('"', '').replace("'", "")
     js_code = f"""
     <script>
@@ -109,7 +111,6 @@ if mode == "📚 分類複習 (Review)":
     st.title("📚 分類單字複習")
     st.info("點擊分類展開單字，勾選「顯示意思」來測試記憶力。")
 
-    # 取得所有分類
     categories = sorted(list(set([w['cat'] for w in st.session_state.words])))
     
     for cat in categories:
@@ -152,12 +153,9 @@ elif mode == "✍️ 拼寫測驗 (Quiz)":
             st.session_state.current_q = random.choice(st.session_state.words)
             st.rerun()
 
-# --- 模式 C: 造句糾錯 ---
+# --- 模式 C: 造句糾錯 (API 版本) ---
 elif mode == "👨‍🏫 AI 造句糾錯 (Grammar)":
     st.title("👨‍🏫 AI 造句糾錯教練")
-    
-    if not grammar_active:
-        st.warning("⚠️ 文法檢查服務連線較慢，請稍候再試或檢查網路。")
     
     q = st.session_state.current_q
     st.info(f"目標單字：**{q['en']}** ({q['zh']})")
@@ -168,23 +166,30 @@ elif mode == "👨‍🏫 AI 造句糾錯 (Grammar)":
     
     with c1:
         if st.button("🔍 檢查文法"):
-            if user_sentence and tool:
+            if user_sentence:
                 # 1. 關鍵字檢查
                 if q['en'].lower() not in user_sentence.lower():
                     st.warning(f"⚠️ 句子裡好像沒用到單字：{q['en']}")
                 
-                # 2. 文法檢查
-                matches = tool.check(user_sentence)
-                if len(matches) == 0:
+                # 2. 文法檢查 (呼叫 API)
+                with st.spinner("AI 老師正在批改中..."):
+                    matches = check_grammar_api(user_sentence)
+                
+                if matches is None:
+                    st.error("連線不穩定，請稍後再試。")
+                elif len(matches) == 0:
                     st.success("🎉 完美！沒有發現文法錯誤。")
                     st.balloons()
                     speak(user_sentence)
                 else:
                     st.error(f"發現 {len(matches)} 個建議：")
                     for match in matches:
-                        st.write(f"❌ **{user_sentence[match.offset:match.offset+match.errorLength]}** -> ✅ **{match.replacements[0] if match.replacements else '刪除'}**")
-                        st.caption(f"原因：{match.message}")
-            elif not user_sentence:
+                        err_text = user_sentence[match['offset']:match['offset']+match['length']]
+                        replacements = [r['value'] for r in match['replacements']]
+                        suggestion = replacements[0] if replacements else "刪除"
+                        st.write(f"❌ **{err_text}** -> ✅ **{suggestion}**")
+                        st.caption(f"原因：{match['message']}")
+            else:
                 st.warning("請先輸入句子")
     
     with c2:
@@ -197,4 +202,4 @@ elif mode == "👨‍🏫 AI 造句糾錯 (Grammar)":
             st.rerun()
 
 st.sidebar.divider()
-st.sidebar.caption("由 Streamlit 與 LanguageTool 驅動")
+st.sidebar.caption("由 Streamlit 與 LanguageTool API 驅動")
