@@ -1,7 +1,7 @@
 import streamlit as st
 import random
 import requests
-import time  # <--- 新增這個，用來產生不同的時間戳記
+import time
 
 # --- 設定網頁 ---
 st.set_page_config(page_title="我的專屬單字教練", page_icon="🎓", layout="wide")
@@ -57,114 +57,4 @@ if "words" not in st.session_state:
         {"en": "Bride", "zh": "新娘", "cat": "🥘 生活與行為"},
         {"en": "Ancestors", "zh": "祖先", "cat": "🥘 生活與行為"},
         {"en": "Zodiac", "zh": "十二生肖", "cat": "🥘 生活與行為"},
-        # --- 🖼️ 抽象與其他 ---
-        {"en": "Ludicrous", "zh": "荒唐的", "cat": "🖼️ 抽象與其他"},
-        {"en": "Rigid", "zh": "死板的", "cat": "🖼️ 抽象與其他"},
-        {"en": "Predict", "zh": "預測", "cat": "🖼️ 抽象與其他"},
-        {"en": "Panoramic", "zh": "全景的", "cat": "🖼️ 抽象與其他"},
-        {"en": "Determine", "zh": "決定", "cat": "🖼️ 抽象與其他"},
-        {"en": "Involve", "zh": "涉及", "cat": "🖼️ 抽象與其他"},
-        {"en": "Particular", "zh": "獨特的", "cat": "🖼️ 抽象與其他"},
-        {"en": "Merchant", "zh": "商人", "cat": "🖼️ 抽象與其他"},
-        {"en": "Unworthy", "zh": "不值得的", "cat": "🖼️ 抽象與其他"},
-        {"en": "Netherworld", "zh": "冥界", "cat": "🖼️ 抽象與其他"},
-        {"en": "Prevalent", "zh": "流行的", "cat": "🖼️ 抽象與其他"},
-        {"en": "Despite", "zh": "儘管", "cat": "🖼️ 抽象與其他"},
-        {"en": "Urging", "zh": "催促", "cat": "🖼️ 抽象與其他"},
-        {"en": "Complexion", "zh": "膚色", "cat": "🖼️ 抽象與其他"}
-    ]
-
-# --- 2. 初始化 ---
-if "current_q" not in st.session_state:
-    st.session_state.current_q = random.choice(st.session_state.words)
-
-# --- 關鍵修復：加入時間戳記，確保每次點擊都會發音 ---
-def speak(text):
-    clean_text = text.replace('"', '').replace("'", "")
-    # 使用當前時間作為唯一標識，強迫瀏覽器重新執行 JS
-    unique_id = int(time.time() * 1000) 
-    js_code = f"""<script>
-    var msg = new SpeechSynthesisUtterance('{clean_text}');
-    msg.lang = 'en-US'; 
-    msg.rate = 0.85; 
-    window.speechSynthesis.speak(msg);
-    console.log("Speaking: {clean_text} ({unique_id})");
-    </script>"""
-    st.components.v1.html(js_code, height=0)
-
-# --- 3. 側邊欄 ---
-st.sidebar.title("功能選單")
-mode = st.sidebar.radio("請選擇：", ["📚 分類複習", "✍️ 拼寫測驗", "👨‍🏫 AI 造句糾錯", "➕ 新增單字"])
-st.sidebar.divider()
-st.sidebar.caption(f"目前單字量：{len(st.session_state.words)} 個")
-
-# --- 模式 A: 複習 ---
-if mode == "📚 分類複習":
-    st.title("📚 分類單字複習")
-    st.info("點擊喇叭可以無限次重聽發音！")
-    categories = sorted(list(set([w['cat'] for w in st.session_state.words])))
-    for cat in categories:
-        with st.expander(f"{cat}", expanded=False):
-            for w in [x for x in st.session_state.words if x['cat'] == cat]:
-                c1, c2, c3 = st.columns([2, 1, 2])
-                c1.markdown(f"### {w['en']}")
-                # 按鈕的 key 保持不變，但在 speak 函式內部做了處理
-                if c2.button("🔊", key=f"s_{w['en']}"): 
-                    speak(w['en'])
-                if c3.checkbox("意思", key=f"c_{w['en']}"): 
-                    st.write(f":blue[{w['zh']}]")
-                st.divider()
-
-# --- 模式 B: 拼寫 ---
-elif mode == "✍️ 拼寫測驗":
-    st.title("✍️ 拼寫測驗")
-    q = st.session_state.current_q
-    st.subheader(f"中文：:blue[{q['zh']}]")
-    ans = st.text_input("英文：", key="quiz").strip()
-    c1, c2, c3 = st.columns([1, 1, 2])
-    if c1.button("檢查"):
-        if ans.lower() == q['en'].lower():
-            st.success("✅ 正確！"); st.balloons(); speak(q['en'])
-        else: st.error(f"❌ 錯誤，是：{q['en']}")
-    if c2.button("發音"): speak(q['en'])
-    if c3.button("下一題"):
-        st.session_state.current_q = random.choice(st.session_state.words); st.rerun()
-
-# --- 模式 C: 造句 (API版) ---
-elif mode == "👨‍🏫 AI 造句糾錯":
-    st.title("👨‍🏫 AI 造句糾錯")
-    q = st.session_state.current_q
-    st.info(f"目標：**{q['en']}** ({q['zh']})")
-    sent = st.text_area("造句：", height=100)
-    c1, c2, c3 = st.columns([1, 1, 1])
-    if c1.button("🔍 檢查"):
-        if sent:
-            if q['en'].lower() not in sent.lower(): st.warning(f"⚠️ 沒用到 {q['en']}")
-            matches = check_grammar_api(sent)
-            if matches is None: st.error("連線錯誤")
-            elif not matches: st.success("🎉 完美！"); st.balloons(); speak(sent)
-            else:
-                st.error(f"發現 {len(matches)} 個錯誤：")
-                for m in matches:
-                    rep = m['replacements'][0]['value'] if m['replacements'] else "刪除"
-                    st.write(f"❌ **{sent[m['offset']:m['offset']+m['length']]}** -> ✅ **{rep}**")
-    if c2.button("🔊 朗讀"): 
-        if sent: speak(sent)
-    if c3.button("換題"):
-        st.session_state.current_q = random.choice(st.session_state.words); st.rerun()
-
-# --- 模式 D: 新增單字 ---
-elif mode == "➕ 新增單字":
-    st.title("➕ 新增單字到庫存")
-    with st.form("add_word"):
-        new_en = st.text_input("英文單字")
-        new_zh = st.text_input("中文意思")
-        cats = sorted(list(set([w['cat'] for w in st.session_state.words])))
-        new_cat = st.selectbox("選擇分類", cats)
-        
-        if st.form_submit_button("儲存"):
-            if new_en and new_zh:
-                st.session_state.words.append({"en": new_en, "zh": new_zh, "cat": new_cat})
-                st.success(f"已新增：{new_en} 到 {new_cat}")
-            else:
-                st.error("請填寫完整")
+        #
