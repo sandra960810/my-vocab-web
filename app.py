@@ -1,13 +1,22 @@
 import streamlit as st
 import random
+import language_tool_python # 引入文法檢查工具
 
-# 設定網頁標題與排版
-st.set_page_config(page_title="我的專屬單字庫", page_icon="📖", layout="centered")
+# 設定網頁
+st.set_page_config(page_title="高階單字教練", page_icon="👨‍🏫", layout="centered")
 
-# --- 1. 完整單字庫 (由照片提取並校對) ---
+# --- 0. 初始化文法檢查工具 (使用快取避免重複載入) ---
+@st.cache_resource
+def get_grammar_tool():
+    # 使用公共API，不需要Java環境
+    return language_tool_python.LanguageTool('en-US')
+
+tool = get_grammar_tool()
+
+# --- 1. 完整單字庫 ---
 if "words" not in st.session_state:
     st.session_state.words = [
-        # 第一張照片內容
+        # 第一張照片
         {"en": "Ambivert", "zh": "中性性格者 (50% 50%)"},
         {"en": "Rational", "zh": "理性的"},
         {"en": "Delusional", "zh": "幻想的/妄想的"},
@@ -30,7 +39,7 @@ if "words" not in st.session_state:
         {"en": "Obligation", "zh": "義務/責任"},
         {"en": "Conduct", "zh": "執行/行為"},
         {"en": "Masculine", "zh": "男性的/陽剛的"},
-        # 第二張照片內容
+        # 第二張照片
         {"en": "Panoramic", "zh": "全景的/全景畫"},
         {"en": "Financial commitment", "zh": "財務承諾"},
         {"en": "Enthusiast", "zh": "愛好者/熱衷者"},
@@ -58,111 +67,106 @@ if "words" not in st.session_state:
         {"en": "Ancestors", "zh": "祖先"}
     ]
 
-# --- 2. 初始化 Session 狀態 ---
+# --- 2. 狀態初始化 ---
 if "current_q" not in st.session_state:
     st.session_state.current_q = random.choice(st.session_state.words)
-if "user_feedback" not in st.session_state:
-    st.session_state.user_feedback = ""
+if "feedback" not in st.session_state:
+    st.session_state.feedback = ""
 
-# --- 3. 語音功能 (優化音質與語速) ---
+# --- 3. 語音功能 ---
 def speak(text):
     js_code = f"""
     <script>
-    var msg = new SpeechSynthesisUtterance("{text}");
+    var msg = new SpeechSynthesisUtterance("{text.replace('"', '')}");
     msg.lang = 'en-US';
-    msg.rate = 0.85;  // 稍慢語速，聽得更清楚
-    msg.pitch = 1.0;
+    msg.rate = 0.85; 
     window.speechSynthesis.speak(msg);
     </script>
     """
     st.components.v1.html(js_code, height=0)
 
-# --- 4. 側邊欄導覽 ---
-st.sidebar.title("🛠️ 單字學習選單")
-mode = st.sidebar.radio("請切換模式：", ["全單字庫複習", "單字拼寫練習", "造句練習模式", "自行新增單字"])
-
+# --- 4. 側邊欄 ---
+st.sidebar.title("功能選單")
+mode = st.sidebar.radio("請選擇：", ["全單字庫複習", "拼寫測驗", "造句糾錯教練"])
 st.sidebar.divider()
-st.sidebar.write(f"📊 目前共有 {len(st.session_state.words)} 個單字")
+st.sidebar.info(f"單字庫總量：{len(st.session_state.words)} 個")
 
-# --- 模式 A：全單字庫複習 ---
+# --- 模式 A: 複習 ---
 if mode == "全單字庫複習":
-    st.title("📚 全單字庫複習")
-    st.write("在練習之前，先快速瀏覽一遍你的筆記單字：")
-    
-    # 建立一個美觀的表格
+    st.title("📚 單字總表")
     st.table(st.session_state.words)
-    
-    if st.button("🔊 隨機聽一個單字發音"):
-        word = random.choice(st.session_state.words)
-        st.write(f"正在朗讀：**{word['en']}**")
-        speak(word['en'])
 
-# --- 模式 B：單字拼寫練習 ---
-elif mode == "單字拼寫練習":
+# --- 模式 B: 拼寫 ---
+elif mode == "拼寫測驗":
     st.title("✍️ 拼寫測驗")
     q = st.session_state.current_q
-    
     st.subheader(f"意思：:blue[{q['zh']}]")
     
-    user_input = st.text_input("請拼出英文：", key="input_text").strip()
+    ans = st.text_input("請拼出英文：").strip()
     
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("檢查"):
-            if user_input.lower() == q['en'].lower():
-                st.session_state.user_feedback = "✅ 正確！你太棒了！"
+            if ans.lower() == q['en'].lower():
+                st.success("✅ 正確！")
                 st.balloons()
                 speak(q['en'])
             else:
-                st.session_state.user_feedback = f"❌ 拼錯了，正確是：**{q['en']}**"
-    
+                st.error(f"❌ 錯誤，正確是：{q['en']}")
     with col2:
-        if st.button("🔊 聽發音"):
+        if st.button("🔊 發音"):
             speak(q['en'])
-            
     with col3:
         if st.button("下一題 ➡️"):
             st.session_state.current_q = random.choice(st.session_state.words)
-            st.session_state.user_feedback = ""
             st.rerun()
-            
-    if st.session_state.user_feedback:
-        st.markdown(st.session_state.user_feedback)
 
-# --- 模式 C：造句練習模式 ---
-elif mode == "造句練習模式":
-    st.title("💡 造句練習")
+# --- 模式 C: 造句糾錯 (核心升級功能) ---
+elif mode == "造句糾錯教練":
+    st.title("👨‍🏫 AI 造句糾錯")
     q = st.session_state.current_q
-    st.write(f"請嘗試用單字 **{q['en']}** ({q['zh']}) 造一個句子：")
     
-    sentence = st.text_area("在下方輸入句子：", height=100)
+    st.info(f"請用單字 **「{q['en']}」 ({q['zh']})** 造一個句子：")
     
-    col1, col2 = st.columns(2)
+    user_sentence = st.text_area("在此輸入你的句子：", height=100, placeholder="例如：He is a very rational person.")
+    
+    col1, col2, col3 = st.columns(3)
+    
     with col1:
-        if st.button("🔊 朗讀我的句子"):
-            if sentence:
-                speak(sentence)
+        # 這是升級的核心：檢查文法
+        if st.button("🔍 檢查文法"):
+            if user_sentence:
+                # 1. 檢查是否有用到目標單字
+                if q['en'].lower() not in user_sentence.lower():
+                    st.warning(f"⚠️ 你的句子好像沒有用到目標單字：{q['en']}")
+                
+                # 2. 使用工具檢查文法
+                matches = tool.check(user_sentence)
+                
+                if len(matches) == 0:
+                    st.success("🎉 太棒了！沒有發現明顯的文法錯誤。")
+                    st.balloons()
+                    speak(user_sentence) # 只有正確時才朗讀
+                else:
+                    st.error(f"發現 {len(matches)} 個潛在錯誤：")
+                    for match in matches:
+                        st.write(f"❌ **錯誤**: {user_sentence[match.offset:match.offset+match.errorLength]}")
+                        st.write(f"💡 **建議**: {', '.join(match.replacements[:3])}")
+                        st.divider()
             else:
-                st.warning("請先輸入內容喔！")
+                st.warning("請先輸入句子喔！")
+                
     with col2:
-        if st.button("更換單字"):
+        # 單純朗讀功能
+        if st.button("🔊 朗讀句子"):
+            if user_sentence:
+                speak(user_sentence)
+            else:
+                st.warning("請先輸入句子")
+
+    with col3:
+        if st.button("換一個單字"):
             st.session_state.current_q = random.choice(st.session_state.words)
             st.rerun()
-
-# --- 模式 D：自行新增單字 ---
-elif mode == "自行新增單字":
-    st.title("➕ 新增單字到庫存")
-    with st.form("add_word_form"):
-        new_en = st.text_input("英文單字")
-        new_zh = st.text_input("中文意思")
-        submit = st.form_submit_button("儲存單字")
-        
-        if submit:
-            if new_en and new_zh:
-                st.session_state.words.append({"en": new_en, "zh": new_zh})
-                st.success(f"成功加入：{new_en}")
-            else:
-                st.error("請填寫完整資訊")
-
-st.divider()
-st.caption("💡 提示：點擊側邊欄可以隨時切換不同的學習模式。")
+            
+    st.caption("註：文法檢查由 LanguageTool 提供，能修正大部分拼寫與基礎文法錯誤。")
