@@ -147,4 +147,22 @@ elif mode == "造句練習模式":
     with col2:
         if st.button("更換單字"):
             st.session_state.current_q = random.choice(st.session_state.words)
-            st.
+            st.rerun()
+
+# --- 模式 D：自行新增單字 ---
+elif mode == "自行新增單字":
+    st.title("➕ 新增單字到庫存")
+    with st.form("add_word_form"):
+        new_en = st.text_input("英文單字")
+        new_zh = st.text_input("中文意思")
+        submit = st.form_submit_button("儲存單字")
+        
+        if submit:
+            if new_en and new_zh:
+                st.session_state.words.append({"en": new_en, "zh": new_zh})
+                st.success(f"成功加入：{new_en}")
+            else:
+                st.error("請填寫完整資訊")
+
+st.divider()
+st.caption("💡 提示：點擊側邊欄可以隨時切換不同的學習模式。")
